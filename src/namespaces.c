@@ -118,6 +118,15 @@ static int child_entry(void *arg) {
     /* Set up Container Filesystem (mount points, proc, dev, rootfs) */
     setup_container_filesystem(opts);
 
+    /* Set Environment Variables (-e KEY=VALUE) */
+    extern char **environ;
+    for (size_t i = 0; i < opts->num_envs; i++) {
+        setenv(opts->envs[i].key, opts->envs[i].val, 1);
+        if (opts->verbose) {
+            log_info("[Child] Env: %s=%s", opts->envs[i].key, opts->envs[i].val);
+        }
+    }
+
     /* Execute the requested command */
     if (!opts->cmd_argv || !opts->cmd_argv[0]) {
         log_error("[Child] No command provided to execute inside container");
@@ -128,9 +137,9 @@ static int child_entry(void *arg) {
         log_info("[Child] Executing: %s", opts->cmd_argv[0]);
     }
 
-    execvp(opts->cmd_argv[0], opts->cmd_argv);
+    execvpe(opts->cmd_argv[0], opts->cmd_argv, environ);
 
-    /* If execvp returns, an error occurred */
-    log_error("[Child] execvp('%s') failed: %s", opts->cmd_argv[0], strerror(errno));
+    /* If execvpe returns, an error occurred */
+    log_error("[Child] execvpe('%s') failed: %s", opts->cmd_argv[0], strerror(errno));
     _exit(127);
 }

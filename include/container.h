@@ -24,6 +24,20 @@
 #define DEFAULT_HOSTNAME "toy-container"
 #define DEFAULT_CGROUP_NAME "toy-container"
 
+/* Structure representing a Volume Bind Mount (-v /host/path:/container/path) */
+typedef struct {
+    char *host_path;
+    char *container_path;
+    bool read_only;
+} volume_bind_t;
+
+/* Structure representing an Environment Variable (-e KEY=VALUE) */
+typedef struct {
+    char *key;
+    char *val;
+    char *raw;
+} env_var_t;
+
 /* Container Configuration Options */
 typedef struct {
     char *rootfs;           /* Path to container rootfs (optional) */
@@ -34,6 +48,14 @@ typedef struct {
     char **cmd_argv;        /* Command and arguments to run inside container */
     bool verbose;           /* Enable debug/verbose logs */
     bool isolate_net;       /* Isolate network namespace */
+
+    /* Custom Volume Binds */
+    volume_bind_t *binds;
+    size_t num_binds;
+
+    /* Environment Variables */
+    env_var_t *envs;
+    size_t num_envs;
 } container_opts_t;
 
 /* Internal Context passed to cloned child process */
@@ -49,6 +71,8 @@ typedef struct {
 int container_run(const container_opts_t *opts);
 void container_opts_init(container_opts_t *opts);
 void container_opts_free(container_opts_t *opts);
+int container_opts_add_bind(container_opts_t *opts, const char *arg);
+int container_opts_add_env(container_opts_t *opts, const char *arg);
 
 /* Namespace Management */
 pid_t spawn_container_process(container_ctx_t *ctx);

@@ -7,13 +7,15 @@ static void print_usage(const char *prog_name) {
     printf("  %s create-rootfs <directory>\n", prog_name);
     printf("  %s help\n\n", prog_name);
     printf("Options:\n");
-    printf("  -r, --rootfs <path>     Path to root filesystem (chroot/pivot_root)\n");
-    printf("  -n, --hostname <name>   Hostname inside container (default: toy-container)\n");
-    printf("  -m, --memory <size>     Memory limit (e.g., 64M, 512M, 1G)\n");
-    printf("  -p, --pids <count>      Maximum number of processes in container\n");
-    printf("  -v, --verbose           Enable detailed debug logging\n");
-    printf("  --no-net                Do not isolate network namespace\n");
-    printf("  -h, --help              Display this help message\n");
+    printf("  -r, --rootfs <path>          Path to root filesystem (chroot/pivot_root)\n");
+    printf("  -n, --hostname <name>        Hostname inside container (default: toy-container)\n");
+    printf("  -m, --memory <size>          Memory limit (e.g., 64M, 512M, 1G)\n");
+    printf("  -p, --pids <count>           Maximum number of processes in container\n");
+    printf("  -v, --volume <host>:<target> Bind mount host directory or file into container\n");
+    printf("  -e, --env <KEY=VAL>          Set environment variable inside container\n");
+    printf("  -V, --verbose                Enable detailed debug logging\n");
+    printf("  --no-net                     Do not isolate network namespace\n");
+    printf("  -h, --help                   Display this help message\n");
 }
 
 int main(int argc, char *argv[]) {
@@ -50,7 +52,9 @@ int main(int argc, char *argv[]) {
         {"hostname", required_argument, 0, 'n'},
         {"memory",   required_argument, 0, 'm'},
         {"pids",     required_argument, 0, 'p'},
-        {"verbose",  no_argument,       0, 'v'},
+        {"volume",   required_argument, 0, 'v'},
+        {"env",      required_argument, 0, 'e'},
+        {"verbose",  no_argument,       0, 'V'},
         {"no-net",   no_argument,       0, 1000},
         {"help",     no_argument,       0, 'h'},
         {0, 0, 0, 0}
@@ -60,7 +64,7 @@ int main(int argc, char *argv[]) {
     int opt;
     optind = 2;
 
-    while ((opt = getopt_long(argc, argv, "+r:n:m:p:vh", long_options, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, "+r:n:m:p:v:e:Vh", long_options, NULL)) != -1) {
         switch (opt) {
             case 'r':
                 opts.rootfs = strdup(optarg);
@@ -83,6 +87,16 @@ int main(int argc, char *argv[]) {
                 }
                 break;
             case 'v':
+                if (container_opts_add_bind(&opts, optarg) < 0) {
+                    log_warn("Failed to parse volume bind '%s'", optarg);
+                }
+                break;
+            case 'e':
+                if (container_opts_add_env(&opts, optarg) < 0) {
+                    log_warn("Failed to parse environment variable '%s'", optarg);
+                }
+                break;
+            case 'V':
                 opts.verbose = true;
                 break;
             case 1000:

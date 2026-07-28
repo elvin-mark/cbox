@@ -33,7 +33,8 @@ clean:
 
 test: all
 	@echo "=== Running basic functionality tests ==="
-	./$(TARGET) run -v -- /bin/echo "Hello from Toy Container!"
-	./$(TARGET) run -v -n my-isolated-host -- /bin/hostname
-	./$(TARGET) run -v -- /bin/ps aux
+	./$(TARGET) run -V -- /bin/echo "Hello from Toy Container!"
+	./$(TARGET) run -V -n my-isolated-host -- /bin/hostname
+	./$(TARGET) run -V -e APP_ENV=production -e FOO=BAR -- /bin/sh -c 'echo "ENV TEST: APP_ENV=$$APP_ENV FOO=$$FOO"'
+	./$(TARGET) run -V -v /tmp:/tmp -- /bin/ls -la /tmp
 	@echo "=== Tests completed successfully ==="

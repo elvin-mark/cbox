@@ -1,6 +1,7 @@
 #include "container.h"
 #include <sys/stat.h>
 #include <dirent.h>
+#include <libgen.h>
 
 static int ensure_dir_exists(const char *path) {
     struct stat st;
@@ -8,7 +9,34 @@ static int ensure_dir_exists(const char *path) {
         if (S_ISDIR(st.st_mode)) return 0;
         return -1;
     }
-    return mkdir(path, 0755);
+
+    char tmp[512];
+    snprintf(tmp, sizeof(tmp), "%s", path);
+    for (char *p = tmp + 1; *p; p++) {
+        if (*p == '/') {
+            *p = '\0';
+            mkdir(tmp, 0755);
+            *p = '/';
+        }
+    }
+    return mkdir(tmp, 0755);
+}
+
+static int ensure_file_exists(const char *path) {
+    struct stat st;
+    if (stat(path, &st) == 0) return 0;
+
+    char tmp[512];
+    snprintf(tmp, sizeof(tmp), "%s", path);
+    char *dir = dirname(tmp);
+    ensure_dir_exists(dir);
+
+    int fd = open(path, O_CREAT | O_WRONLY, 0644);
+    if (fd >= 0) {
+        close(fd);
+        return 0;
+    }
+    return -1;
 }
 
 /* Fallback chroot implementation if pivot_root is unavailable */
@@ -78,7 +106,36 @@ int setup_container_filesystem(const container_opts_t *opts) {
         do_pivot_root(opts->rootfs);
     }
 
-    /* 3. Mount /proc for container process visibility */
+    /* 3. Mount custom volume binds (-v /host/path:/container/path) */
+    for (size_t i = 0; i < opts->num_binds; i++) {
+        const volume_bind_t *bind = &opts->binds[i];
+        struct stat st_host;
+        if (stat(bind->host_path, &st_host) < 0) {
+            log_error("Host path '%s' for volume bind does not exist", bind->host_path);
+            continue;
+        }
+
+        const char *target = bind->container_path;
+        if (S_ISDIR(st_host.st_mode)) {
+            ensure_dir_exists(target);
+        } else {
+            ensure_file_exists(target);
+        }
+
+        if (mount(bind->host_path, target, NULL, MS_BIND | MS_REC, NULL) < 0) {
+            log_warn("Failed to bind mount '%s' -> '%s': %s", bind->host_path, target, strerror(errno));
+        } else {
+            if (bind->read_only) {
+                mount(NULL, target, NULL, MS_BIND | MS_REMOUNT | MS_RDONLY | MS_REC, NULL);
+            }
+            if (opts->verbose) {
+                log_info("[Child] Mounted Volume: '%s' -> '%s'%s", 
+                         bind->host_path, target, bind->read_only ? " (read-only)" : "");
+            }
+        }
+    }
+
+    /* 4. Mount /proc for container process visibility */
     ensure_dir_exists("/proc");
     umount2("/proc", MNT_DETACH);
 
@@ -92,7 +149,7 @@ int setup_container_filesystem(const container_opts_t *opts) {
         log_info("[Child] Mounted fresh /proc filesystem");
     }
 
-    /* 4. Mount /sys read-only */
+    /* 5. Mount /sys read-only */
     ensure_dir_exists("/sys");
     umount2("/sys", MNT_DETACH);
     if (mount("sysfs", "/sys", "sysfs", MS_NOSUID | MS_NOEXEC | MS_NODEV | MS_RDONLY, NULL) < 0) {
@@ -101,7 +158,7 @@ int setup_container_filesystem(const container_opts_t *opts) {
         }
     }
 
-    /* 5. Mount /tmp as tmpfs */
+    /* 6. Mount /tmp as tmpfs */
     ensure_dir_exists("/tmp");
     if (mount("tmpfs", "/tmp", "tmpfs", MS_NOSUID | MS_NODEV, "size=64M") < 0) {
         if (opts->verbose) {

@@ -105,15 +105,18 @@ Limit container memory to **64MB** and maximum processes to **20**:
 ./toy-container run -v -m 64M -p 20 -- /bin/bash
 ```
 
-### 5. Create & Use a Custom Rootfs
-Initialize a minimal rootfs folder structure or extract an Alpine Linux rootfs:
+### 5. Environment Variables & Custom Volume Mounts
+Pass custom environment variables (`-e KEY=VAL`) and bind mount host directories/files (`-v /host/path:/container/path`):
 
 ```bash
-# Create directory structure
-./toy-container create-rootfs ./my-rootfs
+# Pass environment variables
+./toy-container run -V -e APP_ENV=production -e DB_HOST=localhost -- /bin/sh -c 'echo "ENV: $APP_ENV at $DB_HOST"'
 
-# Run container with custom rootfs
-./toy-container run -r ./my-rootfs -v -- /bin/sh
+# Bind mount a host directory into the container
+sudo ./toy-container run -V -v /tmp:/data -- /bin/ls -la /data
+
+# Combine custom rootfs, volume mounts, and environment variables
+sudo ./toy-container run -r ./my-rootfs -v /home/user/data:/app/data:ro -e APP_PORT=8080 -V -- /bin/sh
 ```
 
 ---
