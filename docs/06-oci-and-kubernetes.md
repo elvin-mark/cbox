@@ -61,9 +61,9 @@ In a Kubernetes Pod, multiple containers share a single IP address and `localhos
 
 ```bash
 # 1. Prepare a bundle directory with an Alpine rootfs
-make rootfs
+make rootfs-alpine
 mkdir -p /tmp/oci-bundle
-ln -s "$(pwd)/rootfs" /tmp/oci-bundle/rootfs
+ln -s "$(pwd)/rootfs/alpine" /tmp/oci-bundle/rootfs
 
 # 2. Write a minimal OCI config.json
 cat > /tmp/oci-bundle/config.json <<'EOF'

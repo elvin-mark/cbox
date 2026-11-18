@@ -123,17 +123,18 @@ Limit container memory to **64MB** and maximum processes to **20**:
 Pass custom environment variables (`-e KEY=VAL`) and bind mount host directories/files (`-v /host/path:/container/path`, requires `-r <rootfs>`):
 
 ```bash
-# Download an Alpine minirootfs into ./rootfs
-make rootfs
+# Download an Alpine Linux minirootfs into ./rootfs/alpine (or build BusyBox in ./rootfs/busybox)
+make rootfs-alpine
+make rootfs-busybox
 
 # Pass environment variables
 ./cbox run -V -e APP_ENV=production -e DB_HOST=localhost -- /bin/sh -c 'echo "ENV: $APP_ENV at $DB_HOST"'
 
 # Bind mount a host directory into a custom rootfs
-sudo ./cbox run -r ./rootfs -V -v /tmp:/data -- /bin/ls -la /data
+sudo ./cbox run -r ./rootfs/alpine -V -v /tmp:/data -- /bin/ls -la /data
 
 # Combine custom rootfs, read-only bind mount, hardening, and environment variables
-sudo ./cbox run -r ./rootfs --ro --init --no-new-privs --drop-caps -v /tmp:/app/data:ro -e APP_PORT=8080 -V -- /bin/sh
+sudo ./cbox run -r ./rootfs/alpine --ro --init --no-new-privs --drop-caps -v /tmp:/app/data:ro -e APP_PORT=8080 -V -- /bin/sh
 ```
 
 ---

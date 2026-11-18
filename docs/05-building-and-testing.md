@@ -97,10 +97,14 @@ ls -la ./demo-rootfs
   sudo ./cbox run -V -n test-host -- /bin/hostname
   ```
 
-### Q2: How do I test with a full Linux distribution rootfs?
-Run `make rootfs` to download and extract an Alpine Linux minirootfs into `./rootfs`:
+### Q2: How do I test with a full Linux distribution or BusyBox rootfs?
+Run `make rootfs-alpine` for an Alpine Linux minirootfs (`./rootfs/alpine`), or `make rootfs-busybox` for a minimal static BusyBox rootfs (`./rootfs/busybox`):
 
 ```bash
-make rootfs
-sudo ./cbox run -r ./rootfs -V -- /bin/sh
+make rootfs-alpine
+sudo ./cbox run -r ./rootfs/alpine -V -- /bin/sh
+
+# Or with BusyBox:
+make rootfs-busybox
+sudo ./cbox run -r ./rootfs/busybox -V -- /bin/sh
 ```
