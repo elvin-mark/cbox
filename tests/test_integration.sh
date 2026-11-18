@@ -119,6 +119,19 @@ $BIN --root "$STATE_ROOT" start "$CID"
 state2="$($BIN --root "$STATE_ROOT" state "$CID")"
 assert_contains "$state2" '"status": "running"' "OCI state reports 'running' after start"
 
+exec_out="$($BIN --root "$STATE_ROOT" exec -e EXEC_KEY=hello "$CID" -- /bin/sh -c 'echo "EXEC_PID=$$ EXEC_ENV=$EXEC_KEY"')"
+assert_contains "$exec_out" "EXEC_PID=2" "cbox exec enters running container PID namespace (PID=2)"
+assert_contains "$exec_out" "EXEC_ENV=hello" "cbox exec passes -e environment variables"
+
+cat > "$TMP_DIR/proc.json" <<'EOF'
+{
+  "args": ["/bin/echo", "from-process-json"],
+  "env": ["PROC_JSON=ok"]
+}
+EOF
+exec_json_out="$($BIN --root "$STATE_ROOT" exec -p "$TMP_DIR/proc.json" "$CID")"
+assert_contains "$exec_json_out" "from-process-json" "cbox exec -p process.json executes args"
+
 $BIN --root "$STATE_ROOT" kill "$CID" SIGKILL
 sleep 0.1
 state3="$($BIN --root "$STATE_ROOT" state "$CID")"

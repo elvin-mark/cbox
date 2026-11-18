@@ -69,4 +69,4 @@ Even if a `setuid-root` binary existed inside the rootfs, `execve` will not gran
 
 1. **Exercise 1 (Easy)**: Add a `--hostname-from-id` flag that defaults the hostname to the first 12 characters of the OCI container ID.
 2. **Exercise 2 (Medium)**: Add OverlayFS support (`--overlay lower:upper:work`) using `mount("overlay", target, "overlay", 0, opts)` in `src/filesystem.c`.
-3. **Exercise 3 (Advanced)**: Implement `cbox exec <id> -- <cmd>` in `src/oci.c` by opening `/proc/<pid>/ns/*` and calling `setns()` on each namespace before `execvpe()`.
+3. **Exercise 3 (Advanced)**: Implement `--console-socket` PTY allocation using `posix_openpt()`, `grantpt()`, `unlockpt()`, and `SCM_RIGHTS` ancillary socket passing.

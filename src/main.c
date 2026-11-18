@@ -13,6 +13,7 @@ static void print_usage(const char *prog_name) {
     printf("  %s [--root <dir>] state <id>\n", prog_name);
     printf("  %s [--root <dir>] kill <id> [signal]\n", prog_name);
     printf("  %s [--root <dir>] delete [--force] <id>\n", prog_name);
+    printf("  %s [--root <dir>] exec [options] <id> [--] <command> [args...]\n", prog_name);
     printf("  %s [--root <dir>] run --bundle <dir> <id>\n\n", prog_name);
     printf("Run Options:\n");
     printf("  -r, --rootfs <path>          Path to root filesystem (pivot_root/chroot)\n");
@@ -86,6 +87,89 @@ static int handle_oci_run_or_create(const char *state_root, int argc, char *argv
         return oci_cmd_create(state_root, container_id, bundle, pid_file);
     }
     return oci_cmd_run(state_root, container_id, bundle, pid_file);
+}
+
+static int handle_oci_exec(const char *state_root, int argc, char *argv[], int start_idx) {
+    oci_exec_opts_t exec_opts;
+    memset(&exec_opts, 0, sizeof(exec_opts));
+
+    container_opts_t env_holder;
+    container_opts_init(&env_holder);
+
+    static struct option exec_long_opts[] = {
+        {"detach",         no_argument,       0, 'd'},
+        {"process",        required_argument, 0, 'p'},
+        {"pid-file",       required_argument, 0, 'P'},
+        {"cwd",            required_argument, 0, 'w'},
+        {"env",            required_argument, 0, 'e'},
+        {"user",           required_argument, 0, 'u'},
+        {"no-new-privs",   no_argument,       0, 1001},
+        {"tty",            no_argument,       0, 't'},
+        {"console-socket", required_argument, 0, 'c'},
+        {"preserve-fds",   required_argument, 0, 1002},
+        {0, 0, 0, 0}
+    };
+
+    optind = start_idx;
+    int opt;
+    while ((opt = getopt_long(argc, argv, "+dp:P:w:e:u:tc:", exec_long_opts, NULL)) != -1) {
+        switch (opt) {
+            case 'd':
+                exec_opts.detach = true;
+                break;
+            case 'p':
+                exec_opts.process_json = optarg;
+                break;
+            case 'P':
+                exec_opts.pid_file = optarg;
+                break;
+            case 'w':
+                exec_opts.cwd = optarg;
+                break;
+            case 'e':
+                if (container_opts_add_env(&env_holder, optarg) < 0) {
+                    container_opts_free(&env_holder);
+                    return 1;
+                }
+                break;
+            case 'u': {
+                exec_opts.has_uid_gid = true;
+                exec_opts.uid = (uid_t)strtoul(optarg, NULL, 10);
+                const char *colon = strchr(optarg, ':');
+                exec_opts.gid = colon ? (gid_t)strtoul(colon + 1, NULL, 10) : exec_opts.uid;
+                break;
+            }
+            case 1001:
+                exec_opts.no_new_privs = true;
+                break;
+            case 't':
+            case 'c':
+            case 1002:
+                break;
+            default:
+                container_opts_free(&env_holder);
+                return 1;
+        }
+    }
+
+    if (optind >= argc) {
+        log_error("Container ID required for exec");
+        container_opts_free(&env_holder);
+        return 1;
+    }
+
+    const char *container_id = argv[optind++];
+    if (optind < argc && strcmp(argv[optind], "--") == 0) {
+        optind++;
+    }
+
+    exec_opts.envs = env_holder.envs;
+    exec_opts.num_envs = env_holder.num_envs;
+    exec_opts.cmd_argv = (optind < argc) ? &argv[optind] : NULL;
+
+    int rc = oci_cmd_exec(state_root, container_id, &exec_opts);
+    container_opts_free(&env_holder);
+    return rc;
 }
 
 int main(int argc, char *argv[]) {
@@ -185,6 +269,10 @@ int main(int argc, char *argv[]) {
             return 1;
         }
         return oci_cmd_delete(state_root, id, force);
+    }
+
+    if (strcmp(subcmd, "exec") == 0) {
+        return handle_oci_exec(state_root, argc, argv, cmd_idx + 1);
     }
 
     if (strcmp(subcmd, "run") != 0) {

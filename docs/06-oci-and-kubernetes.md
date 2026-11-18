@@ -98,6 +98,7 @@ EOF
 ./cbox state demo-pod
 ./cbox start demo-pod
 ./cbox state demo-pod
+./cbox exec demo-pod -- /bin/sh -c 'echo "Hello from inside running pod, PID=$$"'
 ./cbox kill demo-pod SIGKILL
 ./cbox delete demo-pod
 ```
@@ -108,10 +109,9 @@ To use `cbox` as a `containerd` runtime handler (for `k3s` / `kubeadm`), registe
 
 ## 4. Current Scope & Honest Limitations for Production k8s
 
-`cbox` implements the core OCI lifecycle (`create`, `start`, `state`, `kill`, `delete`, `run`), `config.json` parsing (`src/json.c`, `src/oci.c`), `setns()` namespace joining, `/dev` node setup, `lo` loopback bring-up, `noNewPrivileges`, and cgroup v2 `memory.max`/`pids.max`/`cpu.max`.
+`cbox` implements the core OCI lifecycle (`create`, `start`, `state`, `exec`, `kill`, `delete`, `run`), `config.json` and `process.json` parsing (`src/json.c`, `src/oci.c`), `setns()` namespace joining, `/dev` node setup, `lo` loopback bring-up, `noNewPrivileges`, and cgroup v2 `memory.max`/`pids.max`/`cpu.max`.
 
 For full production Kubernetes conformance (`containerd` CRI integration tests), the following OCI features are **not yet implemented**:
-- `cbox exec` (running `kubectl exec` probes/shells into an already-running container)
 - `--console-socket` PTY file descriptor passing via `SCM_RIGHTS`
 - Seccomp BPF filter compilation from `linux.seccomp` in `config.json`
 - `systemd` D-Bus cgroup driver (`--systemd-cgroup` is accepted as a CLI flag, but cgroups are written directly to `/sys/fs/cgroup`)

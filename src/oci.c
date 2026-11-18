@@ -2,6 +2,7 @@
 #include "json.h"
 #include <limits.h>
 #include <signal.h>
+#include <sys/prctl.h>
 #include <sys/stat.h>
 
 const char *oci_default_state_root(char *buf, size_t buf_len) {
@@ -554,4 +555,271 @@ int oci_cmd_run(const char *state_root, const char *container_id,
     int rc = container_run(&opts);
     container_opts_free(&opts);
     return rc >= 0 ? rc : 1;
+}
+
+static int join_container_namespaces(pid_t target_pid) {
+    static const struct {
+        const char *name;
+        int clone_type;
+    } ns_list[] = {
+        {"user", CLONE_NEWUSER},
+        {"ipc", CLONE_NEWIPC},
+        {"uts", CLONE_NEWUTS},
+        {"net", CLONE_NEWNET},
+        {"cgroup", CLONE_NEWCGROUP},
+        {"pid", CLONE_NEWPID},
+        {"mnt", CLONE_NEWNS},
+    };
+
+    int fds[7];
+    for (size_t i = 0; i < 7; i++) {
+        fds[i] = -1;
+        char self_path[64], target_path[64];
+        snprintf(self_path, sizeof(self_path), "/proc/self/ns/%s", ns_list[i].name);
+        snprintf(target_path, sizeof(target_path), "/proc/%d/ns/%s", (int)target_pid, ns_list[i].name);
+
+        struct stat st_self, st_target;
+        if (stat(self_path, &st_self) < 0 || stat(target_path, &st_target) < 0) {
+            continue;
+        }
+        /* Skip namespaces already shared with the caller */
+        if (st_self.st_dev == st_target.st_dev && st_self.st_ino == st_target.st_ino) {
+            continue;
+        }
+
+        fds[i] = open(target_path, O_RDONLY);
+        if (fds[i] < 0) {
+            log_error("Failed to open %s: %s", target_path, strerror(errno));
+            for (size_t j = 0; j < i; j++) {
+                if (fds[j] >= 0) close(fds[j]);
+            }
+            return -1;
+        }
+    }
+
+    for (size_t i = 0; i < 7; i++) {
+        if (fds[i] < 0) continue;
+        if (setns(fds[i], ns_list[i].clone_type) < 0) {
+            log_error("setns(%s) failed: %s", ns_list[i].name, strerror(errno));
+            for (size_t j = i; j < 7; j++) {
+                if (fds[j] >= 0) close(fds[j]);
+            }
+            return -1;
+        }
+        close(fds[i]);
+    }
+
+    return 0;
+}
+
+int oci_cmd_exec(const char *state_root, const char *container_id,
+                 const oci_exec_opts_t *exec_opts) {
+    if (!exec_opts) {
+        return 1;
+    }
+
+    char state_path[512];
+    snprintf(state_path, sizeof(state_path), "%s/%s/state.json", state_root, container_id);
+
+    json_value_t *st = json_parse_file(state_path);
+    if (!st) {
+        log_error("Container '%s' does not exist", container_id);
+        return 1;
+    }
+
+    pid_t target_pid = (pid_t)json_as_int64(json_obj_get(st, "pid"), 0);
+    const char *cg_str = json_as_string(json_obj_get(st, "cgroupPath"));
+    char *cgroup_path = cg_str ? strdup(cg_str) : NULL;
+    json_free(st);
+
+    if (!is_pid_alive(target_pid)) {
+        log_error("Container '%s' is not running", container_id);
+        free(cgroup_path);
+        return 1;
+    }
+
+    /* Use container_opts_t as a convenient holder for optional process.json overrides */
+    container_opts_t proc_opts;
+    container_opts_init(&proc_opts);
+    bool use_json_args = false;
+
+    if (exec_opts->process_json) {
+        json_value_t *proc = json_parse_file(exec_opts->process_json);
+        if (!proc) {
+            log_error("Failed to parse process JSON '%s'", exec_opts->process_json);
+            container_opts_free(&proc_opts);
+            free(cgroup_path);
+            return 1;
+        }
+
+        const json_value_t *args = json_obj_get(proc, "args");
+        if (args && args->type == JSON_ARRAY && args->u.array.count > 0) {
+            proc_opts.cmd_argv = calloc(args->u.array.count + 1, sizeof(char *));
+            if (proc_opts.cmd_argv) {
+                for (size_t i = 0; i < args->u.array.count; i++) {
+                    const char *a = json_as_string(args->u.array.items[i]);
+                    proc_opts.cmd_argv[i] = strdup(a ? a : "");
+                }
+                use_json_args = true;
+            }
+        }
+
+        const json_value_t *envs = json_obj_get(proc, "env");
+        if (envs && envs->type == JSON_ARRAY) {
+            for (size_t i = 0; i < envs->u.array.count; i++) {
+                const char *e = json_as_string(envs->u.array.items[i]);
+                if (e) container_opts_add_env(&proc_opts, e);
+            }
+        }
+
+        const char *cwd = json_as_string(json_obj_get(proc, "cwd"));
+        if (cwd) proc_opts.cwd = strdup(cwd);
+        proc_opts.no_new_privs = json_as_bool(json_obj_get(proc, "noNewPrivileges"), false);
+
+        const json_value_t *user = json_obj_get(proc, "user");
+        if (user && user->type == JSON_OBJECT) {
+            const json_value_t *uid_v = json_obj_get(user, "uid");
+            const json_value_t *gid_v = json_obj_get(user, "gid");
+            if (uid_v || gid_v) {
+                proc_opts.has_uid_gid = true;
+                proc_opts.uid = (uid_t)json_as_int64(uid_v, 0);
+                proc_opts.gid = (gid_t)json_as_int64(gid_v, 0);
+            }
+        }
+        json_free(proc);
+    }
+
+    char **cmd_argv = use_json_args ? proc_opts.cmd_argv : exec_opts->cmd_argv;
+    if (!cmd_argv || !cmd_argv[0]) {
+        log_error("No command specified for exec");
+        container_opts_free(&proc_opts);
+        free(cgroup_path);
+        return 1;
+    }
+
+    /* Fork a helper process to call setns() so the parent cbox process
+     * remains in the host namespaces (avoids mutating caller ns & LSan ptrace hangs). */
+    fflush(stdout);
+    fflush(stderr);
+    pid_t helper = fork();
+    if (helper < 0) {
+        log_error("fork() failed during exec: %s", strerror(errno));
+        container_opts_free(&proc_opts);
+        free(cgroup_path);
+        return 1;
+    }
+
+    if (helper == 0) {
+        if (join_container_namespaces(target_pid) < 0) {
+            _exit(1);
+        }
+
+        pid_t child = fork();
+        if (child < 0) {
+            log_error("fork() failed during exec: %s", strerror(errno));
+            _exit(1);
+        }
+
+        if (child == 0) {
+            const char *cwd = exec_opts->cwd ? exec_opts->cwd : proc_opts.cwd;
+            if (cwd && cwd[0] != '\0') {
+                if (chdir(cwd) < 0) {
+                    log_warn("[Exec] chdir('%s') failed: %s", cwd, strerror(errno));
+                }
+            }
+
+            if (exec_opts->no_new_privs || proc_opts.no_new_privs) {
+                prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0);
+            }
+
+            if (exec_opts->has_uid_gid) {
+                if (setgid(exec_opts->gid) < 0 || setuid(exec_opts->uid) < 0) {
+                    log_error("[Exec] setuid/setgid failed: %s", strerror(errno));
+                    _exit(1);
+                }
+            } else if (proc_opts.has_uid_gid) {
+                if (setgid(proc_opts.gid) < 0 || setuid(proc_opts.uid) < 0) {
+                    log_error("[Exec] setuid/setgid failed: %s", strerror(errno));
+                    _exit(1);
+                }
+            }
+
+            extern char **environ;
+            for (size_t i = 0; i < proc_opts.num_envs; i++) {
+                setenv(proc_opts.envs[i].key, proc_opts.envs[i].val, 1);
+            }
+            for (size_t i = 0; i < exec_opts->num_envs; i++) {
+                setenv(exec_opts->envs[i].key, exec_opts->envs[i].val, 1);
+            }
+
+            execvpe(cmd_argv[0], cmd_argv, environ);
+            log_error("[Exec] execvpe('%s') failed: %s", cmd_argv[0], strerror(errno));
+            _exit(127);
+        }
+
+        /* Attach exec child to container's cgroup if present */
+        if (cgroup_path && cgroup_path[0] != '\0') {
+            char procs_path[560];
+            snprintf(procs_path, sizeof(procs_path), "%s/cgroup.procs", cgroup_path);
+            int cfd = open(procs_path, O_WRONLY);
+            if (cfd >= 0) {
+                char pbuf[32];
+                int plen = snprintf(pbuf, sizeof(pbuf), "%d\n", (int)child);
+                if (write(cfd, pbuf, (size_t)plen) < 0) {
+                    /* Best effort */
+                }
+                close(cfd);
+            }
+        }
+
+        if (exec_opts->pid_file && exec_opts->pid_file[0] != '\0') {
+            FILE *pf = fopen(exec_opts->pid_file, "w");
+            if (pf) {
+                fprintf(pf, "%d", (int)child);
+                fclose(pf);
+            }
+        }
+
+        if (exec_opts->detach) {
+            _exit(0);
+        }
+
+        int cstatus = 0;
+        pid_t cwp;
+        do {
+            cwp = waitpid(child, &cstatus, 0);
+        } while (cwp < 0 && errno == EINTR);
+
+        if (cwp < 0) {
+            _exit(1);
+        }
+        if (WIFEXITED(cstatus)) {
+            _exit(WEXITSTATUS(cstatus));
+        }
+        if (WIFSIGNALED(cstatus)) {
+            _exit(128 + WTERMSIG(cstatus));
+        }
+        _exit(1);
+    }
+
+    container_opts_free(&proc_opts);
+    free(cgroup_path);
+
+    int status = 0;
+    pid_t wp;
+    do {
+        wp = waitpid(helper, &status, 0);
+    } while (wp < 0 && errno == EINTR);
+
+    if (wp < 0) {
+        log_error("waitpid() failed: %s", strerror(errno));
+        return 1;
+    }
+    if (WIFEXITED(status)) {
+        return WEXITSTATUS(status);
+    }
+    if (WIFSIGNALED(status)) {
+        return 128 + WTERMSIG(status);
+    }
+    return 1;
 }
