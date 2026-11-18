@@ -316,6 +316,10 @@ void container_opts_free(container_opts_t *opts) {
     free(opts->cwd);
     free(opts->cgroup_name);
     free(opts->exec_fifo_path);
+    free(opts->state_root);
+    free(opts->container_id);
+    free(opts->bundle_path);
+    free(opts->pid_file);
     for (size_t i = 0; i < NS_IDX_COUNT; i++) {
         free(opts->namespaces[i].path);
     }

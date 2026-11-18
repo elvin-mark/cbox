@@ -11,6 +11,8 @@ static void print_usage(const char *prog_name) {
     printf("  %s [--root <dir>] create --bundle <dir> [--pid-file <path>] <id>\n", prog_name);
     printf("  %s [--root <dir>] start <id>\n", prog_name);
     printf("  %s [--root <dir>] state <id>\n", prog_name);
+    printf("  %s [--root <dir>] list [-f table|json] [-q]\n", prog_name);
+    printf("  %s [--root <dir>] ps [-f table|json] [-q]\n", prog_name);
     printf("  %s [--root <dir>] kill <id> [signal]\n", prog_name);
     printf("  %s [--root <dir>] delete [--force] <id>\n", prog_name);
     printf("  %s [--root <dir>] exec [options] <id> [--] <command> [args...]\n", prog_name);
@@ -233,6 +235,31 @@ int main(int argc, char *argv[]) {
         return oci_cmd_state(state_root, argv[cmd_idx + 1]);
     }
 
+    if (strcmp(subcmd, "list") == 0 || strcmp(subcmd, "ps") == 0) {
+        const char *format = "table";
+        bool quiet = false;
+        static struct option list_opts[] = {
+            {"format", required_argument, 0, 'f'},
+            {"quiet",  no_argument,       0, 'q'},
+            {0, 0, 0, 0}
+        };
+        optind = cmd_idx + 1;
+        int lopt;
+        while ((lopt = getopt_long(argc, argv, "f:q", list_opts, NULL)) != -1) {
+            switch (lopt) {
+                case 'f':
+                    format = optarg;
+                    break;
+                case 'q':
+                    quiet = true;
+                    break;
+                default:
+                    return 1;
+            }
+        }
+        return oci_cmd_list(state_root, format, quiet);
+    }
+
     if (strcmp(subcmd, "create") == 0) {
         return handle_oci_run_or_create(state_root, argc, argv, cmd_idx + 1, true);
     }
@@ -412,6 +439,15 @@ int main(int argc, char *argv[]) {
         opts.cmd_argv[i] = strdup(argv[optind + i]);
     }
     opts.cmd_argv[cmd_argc] = NULL;
+
+    /* Register CLI run containers in state_root while running so `cbox list` / `cbox exec` work */
+    char cid_buf[64];
+    snprintf(cid_buf, sizeof(cid_buf), "cbox-%d", (int)getpid());
+    opts.state_root = strdup(state_root);
+    opts.container_id = strdup(cid_buf);
+    if (opts.rootfs) {
+        opts.bundle_path = strdup(opts.rootfs);
+    }
 
     int res = container_run(&opts);
 

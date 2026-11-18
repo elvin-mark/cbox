@@ -1,4 +1,5 @@
 #include "container.h"
+#include "oci.h"
 #include <signal.h>
 
 static volatile sig_atomic_t g_child_pid = -1;
@@ -76,6 +77,15 @@ int container_run(const container_opts_t *opts) {
     }
     close(ctx.sync_pipe[1]);
 
+    /* Register running container in state root so `cbox list` and `cbox exec` can see it */
+    bool registered = false;
+    if (opts->state_root && opts->container_id) {
+        if (oci_register_running_state(opts->state_root, opts->container_id, child_pid,
+                                       opts->bundle_path, cgroup_path, opts->pid_file) == 0) {
+            registered = true;
+        }
+    }
+
     /* Forward SIGINT, SIGTERM, SIGHUP from parent to container process */
     g_child_pid = child_pid;
     struct sigaction sa, old_int, old_term, old_hup;
@@ -99,7 +109,10 @@ int container_run(const container_opts_t *opts) {
     sigaction(SIGTERM, &old_term, NULL);
     sigaction(SIGHUP, &old_hup, NULL);
 
-    /* Clean up cgroup & stack memory on all paths */
+    /* Clean up state registration, cgroup & stack memory on all paths */
+    if (registered) {
+        oci_unregister_state(opts->state_root, opts->container_id);
+    }
     cleanup_cgroups(cgroup_path);
     free(ctx.stack);
 

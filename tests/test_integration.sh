@@ -119,6 +119,16 @@ $BIN --root "$STATE_ROOT" start "$CID"
 state2="$($BIN --root "$STATE_ROOT" state "$CID")"
 assert_contains "$state2" '"status": "running"' "OCI state reports 'running' after start"
 
+list_table="$($BIN --root "$STATE_ROOT" list)"
+assert_contains "$list_table" "$CID" "cbox list shows running container"
+assert_contains "$list_table" "running" "cbox list shows 'running' status"
+
+list_json="$($BIN --root "$STATE_ROOT" ps -f json)"
+assert_contains "$list_json" '"id":"test-oci-1"' "cbox ps -f json outputs JSON array"
+
+list_quiet="$($BIN --root "$STATE_ROOT" list -q)"
+assert_eq "$list_quiet" "$CID" "cbox list -q outputs only container ID"
+
 exec_out="$($BIN --root "$STATE_ROOT" exec -e EXEC_KEY=hello "$CID" -- /bin/sh -c 'echo "EXEC_PID=$$ EXEC_ENV=$EXEC_KEY"')"
 assert_contains "$exec_out" "EXEC_PID=2" "cbox exec enters running container PID namespace (PID=2)"
 assert_contains "$exec_out" "EXEC_ENV=hello" "cbox exec passes -e environment variables"
@@ -144,5 +154,15 @@ if [[ -d "$STATE_ROOT/$CID" ]]; then
 fi
 PASS=$((PASS + 1))
 echo "  [PASS] OCI delete cleaned up state directory"
+
+# 9. Foreground `cbox run` registers state while running and cleans up on exit
+$BIN --root "$STATE_ROOT" run -- /bin/sleep 1 >/dev/null 2>&1 &
+run_bg_pid=$!
+sleep 0.2
+run_list="$($BIN --root "$STATE_ROOT" list)"
+assert_contains "$run_list" "cbox-$run_bg_pid" "cbox run appears in cbox list while running"
+wait "$run_bg_pid"
+run_list_after="$($BIN --root "$STATE_ROOT" list -q)"
+assert_eq "$run_list_after" "" "cbox run cleans up state after exiting"
 
 echo "=== All $PASS Integration Tests Passed ==="

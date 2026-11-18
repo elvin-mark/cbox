@@ -25,6 +25,7 @@ int oci_load_bundle_config(const char *bundle_dir, const char *container_id,
                            container_opts_t *opts);
 
 int oci_cmd_state(const char *state_root, const char *container_id);
+int oci_cmd_list(const char *state_root, const char *format, bool quiet);
 int oci_cmd_create(const char *state_root, const char *container_id,
                    const char *bundle_dir, const char *pid_file);
 int oci_cmd_start(const char *state_root, const char *container_id);
@@ -34,5 +35,10 @@ int oci_cmd_run(const char *state_root, const char *container_id,
                 const char *bundle_dir, const char *pid_file);
 int oci_cmd_exec(const char *state_root, const char *container_id,
                  const oci_exec_opts_t *exec_opts);
+
+int oci_register_running_state(const char *state_root, const char *container_id,
+                               pid_t pid, const char *bundle,
+                               const char *cgroup_path, const char *pid_file);
+void oci_unregister_state(const char *state_root, const char *container_id);
 
 #endif /* TOY_OCI_H */

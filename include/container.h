@@ -106,6 +106,12 @@ typedef struct {
 
     /* OCI lifecycle synchronization: if non-NULL, child waits on this FIFO before exec */
     char *exec_fifo_path;
+
+    /* Optional runtime state registration (used by OCI run & CLI run for list/exec) */
+    char *state_root;
+    char *container_id;
+    char *bundle_path;
+    char *pid_file;
 } container_opts_t;
 
 /* Internal Context passed to cloned child process */

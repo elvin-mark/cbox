@@ -1,5 +1,6 @@
 #include "oci.h"
 #include "json.h"
+#include <dirent.h>
 #include <limits.h>
 #include <signal.h>
 #include <sys/prctl.h>
@@ -321,6 +322,89 @@ int oci_cmd_state(const char *state_root, const char *container_id) {
     return 0;
 }
 
+int oci_cmd_list(const char *state_root, const char *format, bool quiet) {
+    bool is_json = (format && strcmp(format, "json") == 0);
+    if (format && !is_json && strcmp(format, "table") != 0) {
+        log_error("Invalid format '%s' (expected 'table' or 'json')", format);
+        return 1;
+    }
+
+    DIR *dir = opendir(state_root);
+    if (!dir) {
+        if (errno == ENOENT) {
+            if (is_json) {
+                printf("[]\n");
+            } else if (!quiet) {
+                printf("%-16s %-8s %-10s %s\n", "ID", "PID", "STATUS", "BUNDLE");
+            }
+            return 0;
+        }
+        log_error("Failed to open state root '%s': %s", state_root, strerror(errno));
+        return 1;
+    }
+
+    if (is_json) {
+        printf("[");
+    } else if (!quiet) {
+        printf("%-16s %-8s %-10s %s\n", "ID", "PID", "STATUS", "BUNDLE");
+    }
+
+    bool first_json = true;
+    struct dirent *ent;
+    while ((ent = readdir(dir)) != NULL) {
+        if (ent->d_name[0] == '.') {
+            continue;
+        }
+
+        char state_path[768];
+        snprintf(state_path, sizeof(state_path), "%s/%s/state.json", state_root, ent->d_name);
+        json_value_t *st = json_parse_file(state_path);
+        if (!st) {
+            continue;
+        }
+
+        const char *id = json_as_string(json_obj_get(st, "id"));
+        const char *status = json_as_string(json_obj_get(st, "status"));
+        pid_t pid = (pid_t)json_as_int64(json_obj_get(st, "pid"), 0);
+        const char *bundle = json_as_string(json_obj_get(st, "bundle"));
+
+        const char *effective_id = id ? id : ent->d_name;
+        const char *effective_status = status ? status : "stopped";
+        if (!is_pid_alive(pid)) {
+            effective_status = "stopped";
+            pid = 0;
+        }
+
+        if (quiet) {
+            printf("%s\n", effective_id);
+        } else if (is_json) {
+            printf("%s\n  {\"ociVersion\":\"%s\",\"id\":\"%s\",\"status\":\"%s\",\"pid\":%d,\"bundle\":\"%s\"}",
+                   first_json ? "" : ",",
+                   OCI_SPEC_VERSION,
+                   effective_id,
+                   effective_status,
+                   (int)pid,
+                   bundle ? bundle : "");
+            first_json = false;
+        } else {
+            printf("%-16s %-8d %-10s %s\n",
+                   effective_id,
+                   (int)pid,
+                   effective_status,
+                   bundle ? bundle : "");
+        }
+
+        json_free(st);
+    }
+
+    if (is_json) {
+        printf("%s]\n", first_json ? "" : "\n");
+    }
+
+    closedir(dir);
+    return 0;
+}
+
 int oci_cmd_create(const char *state_root, const char *container_id,
                    const char *bundle_dir, const char *pid_file) {
     char state_dir[512];
@@ -537,10 +621,52 @@ int oci_cmd_delete(const char *state_root, const char *container_id, bool force)
     return 0;
 }
 
+int oci_register_running_state(const char *state_root, const char *container_id,
+                               pid_t pid, const char *bundle,
+                               const char *cgroup_path, const char *pid_file) {
+    if (!state_root || !container_id || pid <= 0) {
+        return -1;
+    }
+
+    char state_dir[512];
+    snprintf(state_dir, sizeof(state_dir), "%s/%s", state_root, container_id);
+    if (mkdir_p(state_dir) < 0) {
+        return -1;
+    }
+
+    if (pid_file && pid_file[0] != '\0') {
+        FILE *pf = fopen(pid_file, "w");
+        if (pf) {
+            fprintf(pf, "%d", (int)pid);
+            fclose(pf);
+        }
+    }
+
+    return write_state_file(state_dir, container_id, "running", pid,
+                            bundle ? bundle : "", cgroup_path ? cgroup_path : "");
+}
+
+void oci_unregister_state(const char *state_root, const char *container_id) {
+    if (!state_root || !container_id) {
+        return;
+    }
+
+    char state_dir[512], state_path[560];
+    snprintf(state_dir, sizeof(state_dir), "%s/%s", state_root, container_id);
+    snprintf(state_path, sizeof(state_path), "%s/state.json", state_dir);
+    unlink(state_path);
+    rmdir(state_dir);
+}
+
 int oci_cmd_run(const char *state_root, const char *container_id,
                 const char *bundle_dir, const char *pid_file) {
-    (void)state_root;
-    (void)pid_file;
+    char state_dir[512];
+    snprintf(state_dir, sizeof(state_dir), "%s/%s", state_root, container_id);
+    struct stat st;
+    if (stat(state_dir, &st) == 0) {
+        log_error("Container '%s' already exists", container_id);
+        return 1;
+    }
 
     char abs_bundle[PATH_MAX];
     const char *bundle_abs = realpath(bundle_dir, abs_bundle) ? abs_bundle : bundle_dir;
@@ -550,6 +676,13 @@ int oci_cmd_run(const char *state_root, const char *container_id,
     if (oci_load_bundle_config(bundle_abs, container_id, &opts) < 0) {
         container_opts_free(&opts);
         return 1;
+    }
+
+    opts.state_root = strdup(state_root);
+    opts.container_id = strdup(container_id);
+    opts.bundle_path = strdup(bundle_abs);
+    if (pid_file) {
+        opts.pid_file = strdup(pid_file);
     }
 
     int rc = container_run(&opts);

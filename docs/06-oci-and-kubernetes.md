@@ -97,6 +97,7 @@ EOF
 ./cbox create --bundle /tmp/oci-bundle --pid-file /tmp/ctr.pid demo-pod
 ./cbox state demo-pod
 ./cbox start demo-pod
+./cbox list
 ./cbox state demo-pod
 ./cbox exec demo-pod -- /bin/sh -c 'echo "Hello from inside running pod, PID=$$"'
 ./cbox kill demo-pod SIGKILL
