@@ -1,0 +1,18 @@
+# AppArmor profile for toy-container on Ubuntu 24.04+
+# Allows unprivileged user namespaces (userns) for this specific binary
+# without disabling kernel.apparmor_restrict_unprivileged_userns globally.
+#
+# Install:
+#   sudo cp apparmor/toy-container /etc/apparmor.d/toy-container
+#   # Edit the binary path below to match your build location, then:
+#   sudo apparmor_parser -r /etc/apparmor.d/toy-container
+
+abi <abi/4.0>,
+include <tunables/global>
+
+profile toy-container /home/*/Development/**/toy-container flags=(unconfined) {
+  userns,
+
+  # Site-specific additions and overrides. See local/README for details.
+  include if exists <local/toy-container>
+}

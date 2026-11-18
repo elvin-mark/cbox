@@ -1,4 +1,13 @@
 #include "container.h"
+#include <signal.h>
+
+static volatile sig_atomic_t g_child_pid = -1;
+
+static void forward_signal_handler(int sig) {
+    if (g_child_pid > 0) {
+        kill((pid_t)g_child_pid, sig);
+    }
+}
 
 int container_run(const container_opts_t *opts) {
     if (!opts || !opts->cmd_argv || !opts->cmd_argv[0]) {
@@ -6,11 +15,13 @@ int container_run(const container_opts_t *opts) {
         return -1;
     }
 
+    log_set_quiet(opts->quiet);
+
     log_info("Starting toy container...");
     if (opts->verbose) {
         log_info("  Hostname : %s", opts->hostname ? opts->hostname : DEFAULT_HOSTNAME);
         if (opts->rootfs) {
-            log_info("  RootFS   : %s", opts->rootfs);
+            log_info("  RootFS   : %s%s", opts->rootfs, opts->rootfs_readonly ? " (ro)" : "");
         }
         if (opts->mem_max_bytes) {
             log_info("  Mem Max  : %zu bytes", opts->mem_max_bytes);
@@ -18,9 +29,13 @@ int container_run(const container_opts_t *opts) {
         if (opts->pids_max) {
             log_info("  PIDs Max : %ld", opts->pids_max);
         }
+        if (opts->cpu_quota_us > 0) {
+            log_info("  CPU Max  : %ld/%ld us", opts->cpu_quota_us, opts->cpu_period_us);
+        }
     }
 
     container_ctx_t ctx;
+    memset(&ctx, 0, sizeof(ctx));
     ctx.opts = opts;
 
     if (pipe(ctx.sync_pipe) < 0) {
@@ -42,7 +57,7 @@ int container_run(const container_opts_t *opts) {
     close(ctx.sync_pipe[0]);
 
     /* Configure User Namespace UID/GID mappings */
-    if (setup_id_mappings(child_pid) < 0) {
+    if (setup_id_mappings(child_pid, opts) < 0) {
         log_error("Parent failed to setup UID/GID mappings");
         close(ctx.sync_pipe[1]);
         kill(child_pid, SIGKILL);
@@ -61,17 +76,37 @@ int container_run(const container_opts_t *opts) {
     }
     close(ctx.sync_pipe[1]);
 
+    /* Forward SIGINT, SIGTERM, SIGHUP from parent to container process */
+    g_child_pid = child_pid;
+    struct sigaction sa, old_int, old_term, old_hup;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = forward_signal_handler;
+    sigemptyset(&sa.sa_mask);
+    sigaction(SIGINT, &sa, &old_int);
+    sigaction(SIGTERM, &sa, &old_term);
+    sigaction(SIGHUP, &sa, &old_hup);
+
     /* Wait for container execution to finish */
     int status = 0;
-    if (waitpid(child_pid, &status, 0) < 0) {
-        log_error("waitpid() failed: %s", strerror(errno));
-        cleanup_cgroups(cgroup_path);
-        return -1;
-    }
+    pid_t wp;
+    do {
+        wp = waitpid(child_pid, &status, 0);
+    } while (wp < 0 && errno == EINTR);
 
-    /* Clean up cgroup & stack memory */
+    /* Restore signal handlers */
+    g_child_pid = -1;
+    sigaction(SIGINT, &old_int, NULL);
+    sigaction(SIGTERM, &old_term, NULL);
+    sigaction(SIGHUP, &old_hup, NULL);
+
+    /* Clean up cgroup & stack memory on all paths */
     cleanup_cgroups(cgroup_path);
     free(ctx.stack);
+
+    if (wp < 0) {
+        log_error("waitpid() failed: %s", strerror(errno));
+        return -1;
+    }
 
     int exit_code = -1;
     if (WIFEXITED(status)) {

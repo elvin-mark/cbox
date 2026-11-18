@@ -1,2 +1,4 @@
 build/
-toy-container
+/toy-container
+/rootfs/
+steps/build/

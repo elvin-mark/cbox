@@ -26,7 +26,11 @@ For detailed technical guides explaining how each container subsystem is built i
 2. 🔒 [Linux Namespaces & Process Isolation](file:///home/elvin/Development/Repositories/elvin-mark/toy-container/docs/02-namespaces.md) — `clone()` system call, stack allocation, user namespace UID/GID mapping, and synchronization pipe pattern.
 3. 📁 [Filesystem & Mount Isolation](file:///home/elvin/Development/Repositories/elvin-mark/toy-container/docs/03-filesystem-and-mounts.md) — Mount propagation (`MS_PRIVATE`), procfs/sysfs mounting, `pivot_root` vs `chroot`, and Ubuntu 24.04 AppArmor userns security rules.
 4. 📊 [Control Groups (Cgroups v2)](file:///home/elvin/Development/Repositories/elvin-mark/toy-container/docs/04-cgroups-v2.md) — Unified hierarchy, memory caps (`memory.max`), process caps (`pids.max`), and writable cgroup discovery algorithm.
-5. 🧪 [Building, Testing & Memory Safety](file:///home/elvin/Development/Repositories/elvin-mark/toy-container/docs/05-building-and-testing.md) — Build flags (`-Wall -Wextra -Wpedantic -Werror`), AddressSanitizer (ASan/UBSan), test commands, and troubleshooting.
+5. 🧪 [Building, Testing & Memory Safety](file:///home/elvin/Development/Repositories/elvin-mark/toy-container/docs/05-building-and-testing.md) — Build flags (`-Wall -Wextra -Wpedantic -Werror`), AddressSanitizer (ASan/UBSan), unit & integration tests, and AppArmor setup.
+6. ☸️ [OCI Runtime Mode & Kubernetes Integration](file:///home/elvin/Development/Repositories/elvin-mark/toy-container/docs/06-oci-and-kubernetes.md) — OCI `create`/`start`/`state`/`kill`/`delete` lifecycle, `config.json`, Pod `setns()`, and `containerd`/k8s scope.
+7. 🔬 [Escape Hatches, Shell Equivalents & Experiments](file:///home/elvin/Development/Repositories/elvin-mark/toy-container/docs/07-escape-hatches-and-experiments.md) — Hands-on experiments, `unshare`/`nsenter` equivalents, and exercises.
+
+> 💡 **Learning step by step?** Check out [`steps/`](file:///home/elvin/Development/Repositories/elvin-mark/toy-container/steps) for 6 self-contained mini-programs (`01-clone.c` through `06-cgroups.c`) that build up each kernel primitive one at a time.
 
 ---
 
@@ -88,35 +92,38 @@ Run any command inside an isolated container:
 Inside the container, the process runs as **PID 1**:
 
 ```bash
-./toy-container run -v -- /bin/bash -c "echo 'My Container PID is:' \$\$"
+./toy-container run -V -- /bin/bash -c "echo 'My Container PID is:' \$\$"
 ```
 
 ### 3. Verify Hostname Isolation
 Set a custom hostname inside the container:
 
 ```bash
-./toy-container run -v -n container-demo -- /bin/hostname
+./toy-container run -V -n container-demo -- /bin/hostname
 ```
 
 ### 4. Apply Resource Limits (Cgroups v2)
 Limit container memory to **64MB** and maximum processes to **20**:
 
 ```bash
-./toy-container run -v -m 64M -p 20 -- /bin/bash
+./toy-container run -V -m 64M -p 20 -- /bin/bash
 ```
 
 ### 5. Environment Variables & Custom Volume Mounts
-Pass custom environment variables (`-e KEY=VAL`) and bind mount host directories/files (`-v /host/path:/container/path`):
+Pass custom environment variables (`-e KEY=VAL`) and bind mount host directories/files (`-v /host/path:/container/path`, requires `-r <rootfs>`):
 
 ```bash
+# Download an Alpine minirootfs into ./rootfs
+make rootfs
+
 # Pass environment variables
 ./toy-container run -V -e APP_ENV=production -e DB_HOST=localhost -- /bin/sh -c 'echo "ENV: $APP_ENV at $DB_HOST"'
 
-# Bind mount a host directory into the container
-sudo ./toy-container run -V -v /tmp:/data -- /bin/ls -la /data
+# Bind mount a host directory into a custom rootfs
+sudo ./toy-container run -r ./rootfs -V -v /tmp:/data -- /bin/ls -la /data
 
-# Combine custom rootfs, volume mounts, and environment variables
-sudo ./toy-container run -r ./my-rootfs -v /home/user/data:/app/data:ro -e APP_PORT=8080 -V -- /bin/sh
+# Combine custom rootfs, read-only bind mount, hardening, and environment variables
+sudo ./toy-container run -r ./rootfs --ro --init --no-new-privs --drop-caps -v /tmp:/app/data:ro -e APP_PORT=8080 -V -- /bin/sh
 ```
 
 ---
