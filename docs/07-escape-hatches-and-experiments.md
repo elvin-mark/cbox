@@ -1,12 +1,12 @@
 # Escape Hatches, Shell Equivalents & Experiments 🔬
 
-This guide connects the C syscalls in `toy-container` to everyday Linux commands, explains common container escape vectors, and provides hands-on experiments.
+This guide connects the C syscalls in `cbox` to everyday Linux commands, explains common container escape vectors, and provides hands-on experiments.
 
 ---
 
 ## 1. Shell Equivalents for Every Kernel Primitive
 
-| What `toy-container` does in C | Equivalent Linux CLI Command |
+| What `cbox` does in C | Equivalent Linux CLI Command |
 | :--- | :--- |
 | `clone(CLONE_NEWPID \| CLONE_NEWUTS \| CLONE_NEWNS \| CLONE_NEWUSER)` | `unshare --fork --pid --uts --mount --user --map-root-user --mount-proc /bin/sh` |
 | `setns(fd, CLONE_NEWNET)` | `nsenter --target <pid> --net /bin/sh` |
@@ -21,7 +21,7 @@ This guide connects the C syscalls in `toy-container` to everyday Linux commands
 Run a container and inspect `/proc/$$/ns` in another terminal:
 ```bash
 # Terminal 1 (container)
-./toy-container run -- /bin/sh -c 'ls -l /proc/self/ns; sleep 10'
+./cbox run -- /bin/sh -c 'ls -l /proc/self/ns; sleep 10'
 
 # Terminal 2 (host)
 ls -l /proc/self/ns
@@ -31,19 +31,19 @@ Notice that `pid:[...]`, `uts:[...]`, `ipc:[...]`, `net:[...]`, and `user:[...]`
 ### Experiment 2: Test the PID Limit (`-p`) Against a Fork Bomb
 ```bash
 # With root / delegated cgroup v2:
-sudo ./toy-container run -V -p 10 -- /bin/sh -c 'for i in $(seq 1 20); do sleep 2 & done; wait'
+sudo ./cbox run -V -p 10 -- /bin/sh -c 'for i in $(seq 1 20); do sleep 2 & done; wait'
 ```
 Once 10 processes exist inside the cgroup, `fork()` fails with `Resource temporarily unavailable` (`EAGAIN`), protecting the host.
 
 ### Experiment 3: Test the Memory Limit (`-m`)
 ```bash
-sudo ./toy-container run -V -m 32M -- /bin/sh -c 'head -c 64M /dev/zero | tail'
+sudo ./cbox run -V -m 32M -- /bin/sh -c 'head -c 64M /dev/zero | tail'
 ```
 The kernel OOM killer terminates the container process (`Killed`, exit code 137) once RSS + page cache exceeds 32MB.
 
 ### Experiment 4: Verify `PR_SET_NO_NEW_PRIVS`
 ```bash
-./toy-container run --no-new-privs -- /bin/sh -c 'grep NoNewPrivs /proc/self/status'
+./cbox run --no-new-privs -- /bin/sh -c 'grep NoNewPrivs /proc/self/status'
 # Output: NoNewPrivs:	1
 ```
 Even if a `setuid-root` binary existed inside the rootfs, `execve` will not grant elevated privileges.
@@ -61,7 +61,7 @@ Even if a `setuid-root` binary existed inside the rootfs, `execve` will not gran
    - Systemd marks `/` as `MS_SHARED` by default. Without `mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, NULL)`, mounting `/proc` or `-v` inside the container propagates back onto the host mount table.
 
 3. **Why `-v` without `-r` is dangerous**:
-   - If you bind-mount `-v /host/dir:/app/data` without switching rootfs (`-r`), `mkdir("/app/data")` mutates the host's real `/`! `toy-container` explicitly refuses `-v` unless `-r <rootfs>` is provided.
+   - If you bind-mount `-v /host/dir:/app/data` without switching rootfs (`-r`), `mkdir("/app/data")` mutates the host's real `/`! `cbox` explicitly refuses `-v` unless `-r <rootfs>` is provided.
 
 ---
 
@@ -69,4 +69,4 @@ Even if a `setuid-root` binary existed inside the rootfs, `execve` will not gran
 
 1. **Exercise 1 (Easy)**: Add a `--hostname-from-id` flag that defaults the hostname to the first 12 characters of the OCI container ID.
 2. **Exercise 2 (Medium)**: Add OverlayFS support (`--overlay lower:upper:work`) using `mount("overlay", target, "overlay", 0, opts)` in `src/filesystem.c`.
-3. **Exercise 3 (Advanced)**: Implement `toy-container exec <id> -- <cmd>` in `src/oci.c` by opening `/proc/<pid>/ns/*` and calling `setns()` on each namespace before `execvpe()`.
+3. **Exercise 3 (Advanced)**: Implement `cbox exec <id> -- <cmd>` in `src/oci.c` by opening `/proc/<pid>/ns/*` and calling `setns()` on each namespace before `execvpe()`.

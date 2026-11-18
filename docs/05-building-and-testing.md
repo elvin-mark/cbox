@@ -1,6 +1,6 @@
 # Building, Testing & Memory Safety 🧪
 
-This guide covers building `toy-container`, running automated tests, validating memory safety with sanitizers, and troubleshooting common execution scenarios.
+This guide covers building `cbox`, running automated tests, validating memory safety with sanitizers, and troubleshooting common execution scenarios.
 
 ---
 
@@ -51,30 +51,30 @@ Here are key CLI test commands to verify each subsystem:
 
 ### Test 1: Basic Process Isolation
 ```bash
-./toy-container run -- /bin/echo "Hello from container!"
+./cbox run -- /bin/echo "Hello from container!"
 ```
 
 ### Test 2: Process ID Isolation (PID 1)
 ```bash
-./toy-container run -V -- /bin/bash -c "echo 'PID inside container:' \$\$"
+./cbox run -V -- /bin/bash -c "echo 'PID inside container:' \$\$"
 ```
 *Expected Result*: Output displays `PID inside container: 1`.
 
 ### Test 3: Hostname Isolation
 ```bash
-sudo ./toy-container run -V -n my-container-host -- /bin/hostname
+sudo ./cbox run -V -n my-container-host -- /bin/hostname
 ```
 *Expected Result*: Output displays `my-container-host` without changing host system hostname.
 
 ### Test 4: Resource Limits (Memory & PIDs)
 ```bash
-sudo ./toy-container run -V -m 64M -p 20 -- /bin/bash -c "ps aux"
+sudo ./cbox run -V -m 64M -p 20 -- /bin/bash -c "ps aux"
 ```
 
 ### Test 5: Rootfs Creation & Execution
 ```bash
 # Create minimal directory structure
-./toy-container create-rootfs ./demo-rootfs
+./cbox create-rootfs ./demo-rootfs
 
 # Inspect structure
 ls -la ./demo-rootfs
@@ -87,14 +87,14 @@ ls -la ./demo-rootfs
 ### Q1: Why do I see `Operation not permitted` or `Permission denied` warnings?
 **Answer**: On **Ubuntu 24.04**, Canonical restricted unprivileged user namespace mount and UTS operations (`kernel.apparmor_restrict_unprivileged_userns = 1`). 
 - When run as a normal user, PID and User Namespace isolation work, but filesystem mounts and hostname changes produce warnings.
-- To allow unprivileged `userns` on Ubuntu 24.04 **without `sudo`**, install the included AppArmor profile ([`apparmor/toy-container`](file:///home/elvin/Development/Repositories/elvin-mark/toy-container/apparmor/toy-container)):
+- To allow unprivileged `userns` on Ubuntu 24.04 **without `sudo`**, install the included AppArmor profile ([`apparmor/cbox`](file:///home/elvin/Development/Repositories/elvin-mark/toy-container/apparmor/cbox)):
   ```bash
-  sudo cp apparmor/toy-container /etc/apparmor.d/toy-container
-  sudo apparmor_parser -r /etc/apparmor.d/toy-container
+  sudo cp apparmor/cbox /etc/apparmor.d/cbox
+  sudo apparmor_parser -r /etc/apparmor.d/cbox
   ```
 - Or run with `sudo`:
   ```bash
-  sudo ./toy-container run -V -n test-host -- /bin/hostname
+  sudo ./cbox run -V -n test-host -- /bin/hostname
   ```
 
 ### Q2: How do I test with a full Linux distribution rootfs?
@@ -102,5 +102,5 @@ Run `make rootfs` to download and extract an Alpine Linux minirootfs into `./roo
 
 ```bash
 make rootfs
-sudo ./toy-container run -r ./rootfs -V -- /bin/sh
+sudo ./cbox run -r ./rootfs -V -- /bin/sh
 ```

@@ -17,7 +17,7 @@ static void print_usage(const char *prog_name) {
     printf("Run Options:\n");
     printf("  -r, --rootfs <path>          Path to root filesystem (pivot_root/chroot)\n");
     printf("      --ro                     Remount rootfs read-only\n");
-    printf("  -n, --hostname <name>        Hostname inside container (default: toy-container)\n");
+    printf("  -n, --hostname <name>        Hostname inside container (default: cbox)\n");
     printf("      --cwd <dir>              Working directory inside container\n");
     printf("  -m, --memory <size>          Memory limit (e.g., 64M, 512M, 1G)\n");
     printf("  -p, --pids <count>           Maximum number of processes in container\n");

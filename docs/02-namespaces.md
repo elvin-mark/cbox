@@ -16,7 +16,7 @@ pid_t child_pid = clone(child_entry, stack_top, flags, &ctx);
 ```
 
 ### Stack Allocation for `clone()`
-Unlike `fork()`, which duplicates the caller's stack, `clone()` requires a manually allocated memory stack for the child process. In `toy-container`, we allocate 1MB aligned to 16 bytes:
+Unlike `fork()`, which duplicates the caller's stack, `clone()` requires a manually allocated memory stack for the child process. In `cbox`, we allocate 1MB aligned to 16 bytes:
 
 ```c
 char *stack = malloc(CONTAINER_STACK_SIZE);
@@ -41,7 +41,7 @@ stack_top = (char *)((uintptr_t)stack_top & ~0xF); // 16-byte alignment
 
 ### 3. UTS Namespace (`CLONE_NEWUTS`)
 - **What it does**: Isolates Hostname and NIS Domain name (`UNIX Timesharing System`).
-- **Implementation**: Calling `sethostname("toy-container", 13)` changes the hostname only for processes inside the container UTS namespace, leaving the host system hostname untouched.
+- **Implementation**: Calling `sethostname("cbox", 13)` changes the hostname only for processes inside the container UTS namespace, leaving the host system hostname untouched.
 
 ### 4. Mount Namespace (`CLONE_NEWNS`)
 - **What it does**: Isolates mount points and filesystem views.

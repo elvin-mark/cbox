@@ -25,7 +25,7 @@ In Cgroups v2, directories under `/sys/fs/cgroup/` represent control groups:
 /sys/fs/cgroup/
 ├── cgroup.procs
 ├── cgroup.subtree_control   (contains: +memory +pids)
-└── toy-container/
+└── cbox/
     ├── cgroup.procs         (contains: 12018)
     ├── memory.max           (contains: 67108864)
     └── pids.max             (contains: 20)
@@ -35,7 +35,7 @@ In Cgroups v2, directories under `/sys/fs/cgroup/` represent control groups:
 
 ## 3. Resource Control Interface in `src/cgroups.c`
 
-`toy-container` implements three main control operations:
+`cbox` implements three main control operations:
 
 ### 1. Memory Limit (`memory.max`)
 Limits total RAM usage for the container (including child processes). When memory exceeds `memory.max`, the Linux Out-Of-Memory (OOM) killer terminates processes inside the cgroup:
@@ -65,14 +65,14 @@ write_cgroup_file(cgroup_dir, "cgroup.procs", "12018\n");
 
 ## 4. Writable Cgroup Auto-Discovery Algorithm
 
-When running as a normal user or under systemd session slices, writing directly to `/sys/fs/cgroup/toy-container` might fail if permissions are restricted.
+When running as a normal user or under systemd session slices, writing directly to `/sys/fs/cgroup/cbox` might fail if permissions are restricted.
 
-`toy-container` implements a 2-step fallback discovery algorithm:
+`cbox` implements a 2-step fallback discovery algorithm:
 
 ```mermaid
 graph TD
-    A[Start Cgroup Setup] --> B{Try creating /sys/fs/cgroup/toy-container}
-    B -- Success & Writable --> C[Use /sys/fs/cgroup/toy-container]
+    A[Start Cgroup Setup] --> B{Try creating /sys/fs/cgroup/cbox}
+    B -- Success & Writable --> C[Use /sys/fs/cgroup/cbox]
     B -- Permission Denied --> D[Read /proc/self/cgroup]
     D --> E[Extract user session slice path<br>/user.slice/user-1000.slice/...]
     E --> F[Enable controllers in parent<br>cgroup.subtree_control]

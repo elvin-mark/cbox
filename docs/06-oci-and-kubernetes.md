@@ -1,6 +1,6 @@
 # OCI Runtime Mode & Kubernetes Integration ☸️
 
-This document explains how Kubernetes runs containers under the hood, how `toy-container` implements the **OCI (Open Container Initiative) Runtime Specification** (`runc`-compatible CLI + `config.json`), and what is supported vs. out of scope for production Kubernetes clusters.
+This document explains how Kubernetes runs containers under the hood, how `cbox` implements the **OCI (Open Container Initiative) Runtime Specification** (`runc`-compatible CLI + `config.json`), and what is supported vs. out of scope for production Kubernetes clusters.
 
 ---
 
@@ -9,7 +9,7 @@ This document explains how Kubernetes runs containers under the hood, how `toy-c
 Kubernetes (`kubelet`) does **not** run containers directly. It delegates through two layers:
 
 ```
-kubelet  ──(CRI over gRPC)──▶  containerd / CRI-O  ──(OCI CLI + config.json)──▶  runc / crun / toy-container
+kubelet  ──(CRI over gRPC)──▶  containerd / CRI-O  ──(OCI CLI + config.json)──▶  runc / crun / cbox
 ```
 
 1. **CRI (Container Runtime Interface)**: `kubelet` sends gRPC calls (`RunPodSandbox`, `CreateContainer`, `StartContainer`) to `containerd`.
@@ -22,7 +22,7 @@ kubelet  ──(CRI over gRPC)──▶  containerd / CRI-O  ──(OCI CLI + co
 
 ---
 
-## 2. How `toy-container` Implements the OCI Lifecycle
+## 2. How `cbox` Implements the OCI Lifecycle
 
 ### The `create` / `start` FIFO Handshake
 In Kubernetes/CRI, creating a container and starting it are two separate steps so `containerd` can attach logging/networking hooks before the workload runs:
@@ -30,7 +30,7 @@ In Kubernetes/CRI, creating a container and starting it are two separate steps s
 ```mermaid
 sequenceDiagram
     participant C as containerd / caller
-    participant TC as toy-container CLI
+    participant TC as cbox CLI
     participant P as Container Process (Child)
 
     C->>TC: create --bundle ./bundle --pid-file pid.txt my-ctr
@@ -51,7 +51,7 @@ In a Kubernetes Pod, multiple containers share a single IP address and `localhos
 1. Starting a `pause` sandbox container first.
 2. Passing `"path": "/proc/<pause_pid>/ns/net"` (and `ipc`, `uts`) inside `"linux.namespaces"` of `config.json` for app containers.
 
-`toy-container` checks each namespace entry in `config.json`:
+`cbox` checks each namespace entry in `config.json`:
 - If `path` is omitted, it passes `CLONE_NEW*` to `clone()`.
 - If `path` is present, it omits `CLONE_NEW*` and calls `setns(open(path), CLONE_NEW*)` inside the child process!
 
@@ -94,24 +94,24 @@ cat > /tmp/oci-bundle/config.json <<'EOF'
 EOF
 
 # 3. Run the full OCI lifecycle
-./toy-container create --bundle /tmp/oci-bundle --pid-file /tmp/ctr.pid demo-pod
-./toy-container state demo-pod
-./toy-container start demo-pod
-./toy-container state demo-pod
-./toy-container kill demo-pod SIGKILL
-./toy-container delete demo-pod
+./cbox create --bundle /tmp/oci-bundle --pid-file /tmp/ctr.pid demo-pod
+./cbox state demo-pod
+./cbox start demo-pod
+./cbox state demo-pod
+./cbox kill demo-pod SIGKILL
+./cbox delete demo-pod
 ```
 
-To use `toy-container` as a `containerd` runtime handler (for `k3s` / `kubeadm`), register a `RuntimeClass` pointing `containerd`'s `runc` shim `BinaryName` to `/usr/local/bin/toy-container`.
+To use `cbox` as a `containerd` runtime handler (for `k3s` / `kubeadm`), register a `RuntimeClass` pointing `containerd`'s `runc` shim `BinaryName` to `/usr/local/bin/cbox`.
 
 ---
 
 ## 4. Current Scope & Honest Limitations for Production k8s
 
-`toy-container` implements the core OCI lifecycle (`create`, `start`, `state`, `kill`, `delete`, `run`), `config.json` parsing (`src/json.c`, `src/oci.c`), `setns()` namespace joining, `/dev` node setup, `lo` loopback bring-up, `noNewPrivileges`, and cgroup v2 `memory.max`/`pids.max`/`cpu.max`.
+`cbox` implements the core OCI lifecycle (`create`, `start`, `state`, `kill`, `delete`, `run`), `config.json` parsing (`src/json.c`, `src/oci.c`), `setns()` namespace joining, `/dev` node setup, `lo` loopback bring-up, `noNewPrivileges`, and cgroup v2 `memory.max`/`pids.max`/`cpu.max`.
 
 For full production Kubernetes conformance (`containerd` CRI integration tests), the following OCI features are **not yet implemented**:
-- `toy-container exec` (running `kubectl exec` probes/shells into an already-running container)
+- `cbox exec` (running `kubectl exec` probes/shells into an already-running container)
 - `--console-socket` PTY file descriptor passing via `SCM_RIGHTS`
 - Seccomp BPF filter compilation from `linux.seccomp` in `config.json`
 - `systemd` D-Bus cgroup driver (`--systemd-cgroup` is accepted as a CLI flag, but cgroups are written directly to `/sys/fs/cgroup`)

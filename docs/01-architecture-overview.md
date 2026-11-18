@@ -1,6 +1,6 @@
 # Architecture Overview 🏗️
 
-This document explains the software architecture, process lifecycle, and component organization of `toy-container` — a toy container runtime built from scratch in C.
+This document explains the software architecture, process lifecycle, and component organization of `cbox` — a cbox runtime built from scratch in C.
 
 ---
 
@@ -20,7 +20,7 @@ Unlike Virtual Machines (VMs) which emulate hardware and run an entire guest ope
 
 ## 2. System Component Architecture
 
-`toy-container` is structured into modular C files, each responsible for a distinct kernel subsystem:
+`cbox` is structured into modular C files, each responsible for a distinct kernel subsystem:
 
 ```
                                   +-----------------------+

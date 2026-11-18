@@ -2,7 +2,7 @@ CC ?= gcc
 CFLAGS ?= -Wall -Wextra -Wpedantic -Werror -D_GNU_SOURCE -std=c17 -Iinclude -g
 LDFLAGS ?=
 
-TARGET = toy-container
+TARGET = cbox
 SRC_DIR = src
 INC_DIR = include
 BUILD_DIR = build

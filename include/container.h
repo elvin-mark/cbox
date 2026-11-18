@@ -1,5 +1,5 @@
-#ifndef TOY_CONTAINER_H
-#define TOY_CONTAINER_H
+#ifndef CBOX_H
+#define CBOX_H
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
@@ -21,8 +21,8 @@
 #include <unistd.h>
 
 #define CONTAINER_STACK_SIZE (1024 * 1024) /* 1 MB stack for cloned child */
-#define DEFAULT_HOSTNAME "toy-container"
-#define DEFAULT_CGROUP_NAME "toy-container"
+#define DEFAULT_HOSTNAME "cbox"
+#define DEFAULT_CGROUP_NAME "cbox"
 
 #if defined(__GNUC__) || defined(__clang__)
 #define PRINTF_FMT(fmt_idx, arg_idx) __attribute__((format(printf, fmt_idx, arg_idx)))
@@ -149,4 +149,4 @@ void log_success(const char *fmt, ...) PRINTF_FMT(1, 2);
 void log_warn(const char *fmt, ...) PRINTF_FMT(1, 2);
 void log_error(const char *fmt, ...) PRINTF_FMT(1, 2);
 
-#endif /* TOY_CONTAINER_H */
+#endif /* CBOX_H */

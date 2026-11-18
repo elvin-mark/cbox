@@ -312,7 +312,7 @@ static int child_entry(void *arg) {
         _exit(1);
     }
 
-    /* OCI create/start handshake: block on exec.fifo until 'toy-container start' */
+    /* OCI create/start handshake: block on exec.fifo until 'cbox start' */
     if (opts->exec_fifo_path && opts->exec_fifo_path[0] != '\0') {
         int fifo_fd = open(opts->exec_fifo_path, O_RDONLY);
         if (fifo_fd < 0) {

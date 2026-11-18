@@ -10,7 +10,7 @@ When a process is cloned with `CLONE_NEWNS` (Mount Namespace), its initial mount
 
 However, by default on many systemd-based Linux systems, mounts are set to **Shared (`MS_SHARED`)**. If mount propagation remains shared, mounting or unmounting a directory inside the container will affect the host system!
 
-To break this link, `toy-container` makes all mounts in the container mount namespace private:
+To break this link, `cbox` makes all mounts in the container mount namespace private:
 
 ```c
 mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, NULL);
@@ -23,7 +23,7 @@ mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, NULL);
 
 ## 2. Root Filesystem Switching: `pivot_root` vs `chroot`
 
-To give the container its own root filesystem (e.g. Alpine Linux, BusyBox, or Ubuntu rootfs), `toy-container` supports root switching.
+To give the container its own root filesystem (e.g. Alpine Linux, BusyBox, or Ubuntu rootfs), `cbox` supports root switching.
 
 ```
        Host System Root                    Container System Root
@@ -39,7 +39,7 @@ To give the container its own root filesystem (e.g. Alpine Linux, BusyBox, or Ub
 `pivot_root(new_root, put_old)` moves the current root mount to `put_old` and makes `new_root` the new root mount point of the calling process.
 
 #### Requirements for `pivot_root`:
-1. `new_root` must be a mount point. In `toy-container`, we ensure this by bind-mounting `new_root` onto itself:
+1. `new_root` must be a mount point. In `cbox`, we ensure this by bind-mounting `new_root` onto itself:
    ```c
    mount(new_root, new_root, NULL, MS_BIND | MS_REC, NULL);
    ```
@@ -47,7 +47,7 @@ To give the container its own root filesystem (e.g. Alpine Linux, BusyBox, or Ub
 3. `pivot_root` allows unmounting `put_old` with `umount2("/.old_root", MNT_DETACH)`, removing access to the host filesystem entirely.
 
 ### `chroot` Fallback
-If `pivot_root` fails (e.g. when running on initramfs or rootfs where `pivot_root` is not permitted by kernel), `toy-container` falls back to `chroot(new_root)` followed by `chdir("/")`.
+If `pivot_root` fails (e.g. when running on initramfs or rootfs where `pivot_root` is not permitted by kernel), `cbox` falls back to `chroot(new_root)` followed by `chdir("/")`.
 
 ---
 
@@ -65,7 +65,7 @@ mount("proc", "/proc", "proc", MS_NOSUID | MS_NOEXEC | MS_NODEV, NULL);
 ```
 
 ### 2. Mounting `/sys` (Sysfs)
-`/sys` exposes kernel and device status. In `toy-container`, `/sys` is mounted **Read-Only (`MS_RDONLY`)** for security:
+`/sys` exposes kernel and device status. In `cbox`, `/sys` is mounted **Read-Only (`MS_RDONLY`)** for security:
 
 ```c
 mount("sysfs", "/sys", "sysfs", MS_NOSUID | MS_NOEXEC | MS_NODEV | MS_RDONLY, NULL);
@@ -90,7 +90,7 @@ Under this policy:
 - However, AppArmor blocks unprivileged user namespaces from executing `mount()` or `sethostname()` calls.
 
 ### Graceful Fallback Handling in `src/filesystem.c`
-Instead of failing or crashing when running as an unprivileged user on Ubuntu 24.04, `toy-container` inspects `errno` (`EPERM` / `EACCES`) and logs helpful warnings while proceeding with PID & User Namespace isolation:
+Instead of failing or crashing when running as an unprivileged user on Ubuntu 24.04, `cbox` inspects `errno` (`EPERM` / `EACCES`) and logs helpful warnings while proceeding with PID & User Namespace isolation:
 
 ```c
 if (mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, NULL) < 0) {
@@ -100,4 +100,4 @@ if (mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, NULL) < 0) {
 }
 ```
 
-Running with `sudo ./toy-container ...` grants full root capabilities on the host and enables all mount operations without warnings.
+Running with `sudo ./cbox ...` grants full root capabilities on the host and enables all mount operations without warnings.

@@ -17,7 +17,7 @@ int container_run(const container_opts_t *opts) {
 
     log_set_quiet(opts->quiet);
 
-    log_info("Starting toy container...");
+    log_info("Starting cbox container...");
     if (opts->verbose) {
         log_info("  Hostname : %s", opts->hostname ? opts->hostname : DEFAULT_HOSTNAME);
         if (opts->rootfs) {

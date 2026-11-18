@@ -1,4 +1,4 @@
-# Toy Container in C 🐳
+# cbox — Minimal OCI Container Runtime in C 🐳
 
 A lightweight, educational, zero-dependency Linux container implementation written from scratch in C (C17 standard).
 
@@ -8,7 +8,7 @@ This project demonstrates how modern container runtimes (such as Docker, `runc`,
 
 ## 🚀 Key Features & Kernel Isolation Mechanics
 
-| Linux Kernel Primitive | Feature | How `toy-container` Implements It |
+| Linux Kernel Primitive | Feature | How `cbox` Implements It |
 | :--- | :--- | :--- |
 | **PID Namespace** | Process ID Isolation | `CLONE_NEWPID` flag in `clone()`. Entrypoint process inside container runs as **PID 1**. |
 | **UTS Namespace** | Hostname Isolation | `CLONE_NEWUTS` flag in `clone()`. Calls `sethostname()` inside container without affecting the host. |
@@ -37,7 +37,7 @@ For detailed technical guides explaining how each container subsystem is built i
 ## 📁 Project Structure
 
 ```
-toy-container/
+cbox/
 ├── Makefile                # Build system with strict compiler flags (-Wall -Wextra -Wpedantic -Werror)
 ├── README.md               # Architecture documentation & usage guide
 ├── include/
@@ -85,28 +85,28 @@ make clean
 Run any command inside an isolated container:
 
 ```bash
-./toy-container run -- /bin/echo "Hello from inside the toy container!"
+./cbox run -- /bin/echo "Hello from inside the cbox!"
 ```
 
 ### 2. Verify PID Isolation
 Inside the container, the process runs as **PID 1**:
 
 ```bash
-./toy-container run -V -- /bin/bash -c "echo 'My Container PID is:' \$\$"
+./cbox run -V -- /bin/bash -c "echo 'My Container PID is:' \$\$"
 ```
 
 ### 3. Verify Hostname Isolation
 Set a custom hostname inside the container:
 
 ```bash
-./toy-container run -V -n container-demo -- /bin/hostname
+./cbox run -V -n container-demo -- /bin/hostname
 ```
 
 ### 4. Apply Resource Limits (Cgroups v2)
 Limit container memory to **64MB** and maximum processes to **20**:
 
 ```bash
-./toy-container run -V -m 64M -p 20 -- /bin/bash
+./cbox run -V -m 64M -p 20 -- /bin/bash
 ```
 
 ### 5. Environment Variables & Custom Volume Mounts
@@ -117,13 +117,13 @@ Pass custom environment variables (`-e KEY=VAL`) and bind mount host directories
 make rootfs
 
 # Pass environment variables
-./toy-container run -V -e APP_ENV=production -e DB_HOST=localhost -- /bin/sh -c 'echo "ENV: $APP_ENV at $DB_HOST"'
+./cbox run -V -e APP_ENV=production -e DB_HOST=localhost -- /bin/sh -c 'echo "ENV: $APP_ENV at $DB_HOST"'
 
 # Bind mount a host directory into a custom rootfs
-sudo ./toy-container run -r ./rootfs -V -v /tmp:/data -- /bin/ls -la /data
+sudo ./cbox run -r ./rootfs -V -v /tmp:/data -- /bin/ls -la /data
 
 # Combine custom rootfs, read-only bind mount, hardening, and environment variables
-sudo ./toy-container run -r ./rootfs --ro --init --no-new-privs --drop-caps -v /tmp:/app/data:ro -e APP_PORT=8080 -V -- /bin/sh
+sudo ./cbox run -r ./rootfs --ro --init --no-new-privs --drop-caps -v /tmp:/app/data:ro -e APP_PORT=8080 -V -- /bin/sh
 ```
 
 ---
@@ -145,7 +145,7 @@ sequenceDiagram
     P->>P: Add child PID to /sys/fs/cgroup/.../cgroup.procs
     P->>Pipe: Write 1 byte to sync_pipe[1] unblocking child
     Note over C: Child wakes up as UID 0 (root inside container)
-    C->>C: sethostname("toy-container")
+    C->>C: sethostname("cbox")
     C->>C: Make mount propagation MS_PRIVATE
     C->>C: Mount fresh /proc and /sys filesystems
     C->>C: execvp(command, argv)

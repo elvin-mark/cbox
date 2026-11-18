@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BIN="${1:-./toy-container}"
+BIN="${1:-./cbox}"
 PASS=0
 
 assert_eq() {

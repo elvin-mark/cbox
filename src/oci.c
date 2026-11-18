@@ -6,15 +6,15 @@
 
 const char *oci_default_state_root(char *buf, size_t buf_len) {
     if (geteuid() == 0) {
-        snprintf(buf, buf_len, "/run/toy-container");
+        snprintf(buf, buf_len, "/run/cbox");
         return buf;
     }
     const char *xdg = getenv("XDG_RUNTIME_DIR");
     if (xdg && xdg[0] != '\0') {
-        snprintf(buf, buf_len, "%s/toy-container", xdg);
+        snprintf(buf, buf_len, "%s/cbox", xdg);
         return buf;
     }
-    snprintf(buf, buf_len, "/tmp/toy-container-state-%u", (unsigned int)getuid());
+    snprintf(buf, buf_len, "/tmp/cbox-state-%u", (unsigned int)getuid());
     return buf;
 }
 

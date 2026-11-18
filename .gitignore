@@ -1,4 +1,5 @@
 build/
+/cbox
 /toy-container
 /rootfs/
 steps/build/
