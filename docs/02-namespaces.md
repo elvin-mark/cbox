@@ -41,7 +41,7 @@ stack_top = (char *)((uintptr_t)stack_top & ~0xF); // 16-byte alignment
 
 ### 3. UTS Namespace (`CLONE_NEWUTS`)
 - **What it does**: Isolates Hostname and NIS Domain name (`UNIX Timesharing System`).
-- **Implementation**: Calling `sethostname("cbox", 13)` changes the hostname only for processes inside the container UTS namespace, leaving the host system hostname untouched.
+- **Implementation**: Calling `sethostname("cbox", 4)` changes the hostname only for processes inside the container UTS namespace, leaving the host system hostname untouched.
 
 ### 4. Mount Namespace (`CLONE_NEWNS`)
 - **What it does**: Isolates mount points and filesystem views.

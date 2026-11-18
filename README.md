@@ -38,18 +38,28 @@ For detailed technical guides explaining how each container subsystem is built i
 
 ```
 cbox/
-├── Makefile                # Build system with strict compiler flags (-Wall -Wextra -Wpedantic -Werror)
+├── Makefile                # Build, sanitizer, unit/integration test, & Alpine rootfs targets
 ├── README.md               # Architecture documentation & usage guide
+├── LICENSE                 # MIT License
+├── apparmor/
+│   └── cbox                # AppArmor profile for unprivileged userns on Ubuntu 24.04+
+├── docs/                   # In-depth guides (01-architecture through 07-escape-hatches)
+├── steps/                  # 6 standalone step-by-step C tutorials (01-clone.c .. 06-cgroups.c)
+├── tests/                  # Unit tests (test_unit.c) & integration tests (test_integration.sh)
 ├── include/
-│   └── container.h         # Header declaring configuration structures, function prototypes, & headers
+│   ├── container.h         # Core container options, context, & subsystem declarations
+│   ├── json.h              # Zero-dependency JSON parser API
+│   └── oci.h               # OCI runtime lifecycle API (create/start/state/kill/delete)
 └── src/
-    ├── main.c              # CLI argument parser & option processing (getopt_long)
-    ├── container.c         # High-level orchestration & waitpid child process lifecycle
-    ├── namespaces.c        # Process cloning (clone) & UID/GID user namespace pipe synchronization
-    ├── filesystem.c        # Mount propagation (MS_PRIVATE), procfs mounting, & pivot_root/chroot
-    ├── cgroups.c           # Cgroup v2 directory management, memory.max, & pids.max enforcement
+    ├── main.c              # CLI parser (educational mode & OCI mode)
+    ├── container.c         # High-level orchestration, signal forwarding, & waitpid lifecycle
+    ├── namespaces.c        # clone()/setns(), UID/GID map, PID 1 reaper, loopback, & caps
+    ├── filesystem.c        # MS_PRIVATE, /dev nodes, volume binds, procfs/sysfs, pivot_root
+    ├── cgroups.c           # Cgroup v2 memory.max, pids.max, & cpu.max enforcement
+    ├── oci.c               # OCI config.json loader & create/start/state/kill/delete commands
+    ├── json.c              # Recursive-descent JSON parser
     ├── rootfs.c            # Helper utility for creating minimal rootfs directory trees
-    └── utils.c             # Colorized logging routines & human-readable size parser (e.g., 64M -> bytes)
+    └── utils.c             # Logging, size/signal parsers, & option helpers
 ```
 
 ---
@@ -85,7 +95,7 @@ make clean
 Run any command inside an isolated container:
 
 ```bash
-./cbox run -- /bin/echo "Hello from inside the cbox!"
+./cbox run -- /bin/echo "Hello from inside cbox!"
 ```
 
 ### 2. Verify PID Isolation
